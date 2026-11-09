@@ -1727,10 +1727,8 @@ export function createSphereBody( world, spawnPos ) {
 		objectLayer: world._OL_MOVING,
 		position: spawnPos || [ 3.5, 0.5, 5 ],
 		mass: 1000.0,
-		// Tighter grip (user order 2026-11-09: "make the car slide less"):
-		// raised from 5.0 so the sphere's contact patch holds the line better
-		// in normal driving while hard cornering can still break traction.
-		friction: 7.0,
+		// +15% road grip vs the 5.0 baseline (user order 2026-11-09).
+		friction: 5.75,
 		restitution: 0.0,
 		linearDamping: 0.1,
 		angularDamping: 4.0,

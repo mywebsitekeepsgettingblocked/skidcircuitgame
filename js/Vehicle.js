@@ -60,8 +60,8 @@ export class Vehicle {
 		this.inputZ = 0;
 
 		this.driftIntensity = 0;
-		// Progressive steering accumulator (0 = straight, ±1 = full lock).
-		this.steerRamp = 0;
+		// 0..1 over-speed creep above the 80% cruise cap (user order 2026-11-09).
+		this.speedCreep = 0;
 		this.spawnPosition = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.spawnAngle = 0;
 		this.topSpeed = 1.0;
@@ -237,27 +237,13 @@ export class Vehicle {
 		this.inputX = controlsInput.x;
 		this.inputZ = controlsInput.z;
 
-		// Progressive steering (user order 2026-11-09): steering builds on a
-		// curve instead of snapping to full lock. A short tap gives a light
-		// nudge, HOLDING ramps up to strong steering (~0.6s to full lock),
-		// and releasing winds back down fast. The 1.35 power curve keeps the
-		// first moments of a turn gentle, so normal driving stays smooth.
-		const STEER_CHARGE_RATE = 1.7;   // per second toward the held input
-		const STEER_RELEASE_RATE = 7.0;  // per second back to neutral
-		this.steerRamp = Number.isFinite( this.steerRamp ) ? this.steerRamp : 0;
-		const steerTarget = Math.abs( this.inputX ) > 0.05 ? this.inputX : 0;
-		const steerStep = ( steerTarget === 0 ? STEER_RELEASE_RATE : STEER_CHARGE_RATE ) * dt;
-		const steerDelta = steerTarget - this.steerRamp;
-		this.steerRamp += Math.abs( steerDelta ) <= steerStep ? steerDelta : Math.sign( steerDelta ) * steerStep;
-		this.steerRamp = THREE.MathUtils.clamp( this.steerRamp, - 1, 1 );
-		const shapedSteer = Math.sign( this.steerRamp ) * Math.pow( Math.abs( this.steerRamp ), 1.35 );
-
 		let direction = Math.sign( this.linearSpeed );
 		if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
 		const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 ) * this.gripMultiplier;
 
-		const targetAngular = - shapedSteer * steeringGrip * 4 * direction;
+		// Turning strength scaled to 70% (user order 2026-11-09).
+		const targetAngular = - this.inputX * steeringGrip * 4 * 0.7 * direction;
 		this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
 
 		this.container.rotateY( this.angularSpeed * dt );
@@ -274,7 +260,21 @@ export class Vehicle {
 
 		}
 
-		const targetSpeed = this.inputZ * this.topSpeed;
+		// Speed curve (user order 2026-11-09): the car cruises at 80% of its
+		// top speed, then — once actually sitting at that cap with throttle
+		// held — slowly creeps up to 105% of it (a 5% over-speed reward that
+		// takes a few seconds to reach and drops away when you let off).
+		const cruiseCap = this.topSpeed * 0.8;
+		const atCruiseCap = Math.abs( this.linearSpeed ) >= cruiseCap * 0.985;
+		const throttleHeld = Math.abs( this.inputZ ) > 0.05;
+		const creepTarget = atCruiseCap && throttleHeld ? 1 : 0;
+		// ~3.5s to full creep, ~0.4s to shed it.
+		const creepStep = ( creepTarget > this.speedCreep ? 0.29 : 2.5 ) * dt;
+		const creepDelta = creepTarget - this.speedCreep;
+		this.speedCreep += Math.abs( creepDelta ) <= creepStep ? creepDelta : Math.sign( creepDelta ) * creepStep;
+		this.speedCreep = THREE.MathUtils.clamp( this.speedCreep, 0, 1 );
+		const effectiveTopSpeed = cruiseCap * ( 1 + 0.05 * this.speedCreep );
+		const targetSpeed = this.inputZ * effectiveTopSpeed;
 
 		// Lerp factors are clamped to 1: stacked pad effects multiply
 		// accelMultiplier (4x pad-high-speed is ~14x), and lerp(a, b, t)
