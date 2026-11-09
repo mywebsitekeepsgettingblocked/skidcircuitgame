@@ -60,8 +60,6 @@ export class Vehicle {
 		this.inputZ = 0;
 
 		this.driftIntensity = 0;
-		// 0..1 over-speed creep above the 80% cruise cap (user order 2026-11-09).
-		this.speedCreep = 0;
 		this.spawnPosition = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.spawnAngle = 0;
 		this.topSpeed = 1.0;
@@ -260,21 +258,7 @@ export class Vehicle {
 
 		}
 
-		// Speed curve (user order 2026-11-09): the car cruises at 80% of its
-		// top speed, then — once actually sitting at that cap with throttle
-		// held — slowly creeps up to 105% of it (a 5% over-speed reward that
-		// takes a few seconds to reach and drops away when you let off).
-		const cruiseCap = this.topSpeed * 0.8;
-		const atCruiseCap = Math.abs( this.linearSpeed ) >= cruiseCap * 0.985;
-		const throttleHeld = Math.abs( this.inputZ ) > 0.05;
-		const creepTarget = atCruiseCap && throttleHeld ? 1 : 0;
-		// ~3.5s to full creep, ~0.4s to shed it.
-		const creepStep = ( creepTarget > this.speedCreep ? 0.29 : 2.5 ) * dt;
-		const creepDelta = creepTarget - this.speedCreep;
-		this.speedCreep += Math.abs( creepDelta ) <= creepStep ? creepDelta : Math.sign( creepDelta ) * creepStep;
-		this.speedCreep = THREE.MathUtils.clamp( this.speedCreep, 0, 1 );
-		const effectiveTopSpeed = cruiseCap * ( 1 + 0.05 * this.speedCreep );
-		const targetSpeed = this.inputZ * effectiveTopSpeed;
+		const targetSpeed = this.inputZ * this.topSpeed;
 
 		// Lerp factors are clamped to 1: stacked pad effects multiply
 		// accelMultiplier (4x pad-high-speed is ~14x), and lerp(a, b, t)
